@@ -45,15 +45,50 @@ extension MainModel: MainModelInput {
     }
     
     func loadData(for urlString: String, at indexPath: IndexPath) {
-        
+        // lock
+        let lock = NSLock()
+        // guard for url
         guard let url = URL(string: urlString) else { return }
         
-        if let data = try? Data(contentsOf: url) {
-            
-            dataService.write(image: data, for: urlString)
-            output.imageDataDidLoad(for: indexPath)
+        // Create global async queue to write the data
+        DispatchQueue.global(qos: .utility).async {
+            if let data = try? Data(contentsOf: url) {
+                lock.lock()
+                // write the data
+                self.dataService.write(image: data, for: urlString)
+                // unlock
+                lock.unlock()
+                
+                // Create main async queue to show the UI data
+                DispatchQueue.main.async {
+                    self.output.imageDataDidLoad(for: indexPath)
+                }
+            }
         }
     }
+    
+    // This solution has a priority inversion problem as described in my console:
+//    «Thread Performance Checker: Thread running at User-initiated quality-of-service class waiting on a lower QoS thread running at Default quality-of-service class. Investigate ways to avoid priority inversions
+//    PID: 90838, TID: 3210251»
+
+    
+//    func loadData2(for urlString: String, at indexPath: IndexPath) {
+//        // guard for url
+//        guard let url = URL(string: urlString) else { return }
+//        
+//        // Create global async queue to write the data
+//        DispatchQueue.global(qos: .default).async {
+//            if let data = try? Data(contentsOf: url) {
+//                //self.dataService.write(image: data, for: urlString)
+//                
+//                // Create main async queue to show the UI data
+//                DispatchQueue.main.async {
+//                    self.dataService.write(image: data, for: urlString)
+//                    self.output.imageDataDidLoad(for: indexPath)
+//                }
+//            }
+//        }
+//    }
 }
 
 // MARK: - Private
